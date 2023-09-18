@@ -50,8 +50,7 @@ The topics are divided into 10 sets of exercices, each containing an .Rmd file w
 
 (PT)
 
-Este projeto apresenta uma coleção de listas de exercícios resolvidos sobre Aprendizado de Máquina utilizando a linguagem R e as bibliotecas do tidyverse. As soluções apresentadas foram desenvolvidas durante a disciplina de Aprendizado de Máquina na Universidade Federal do ABC (UFABC), no segundo quadrimestre de 2023. <br>
-Os tópicos estão divididos em 10 listas de exercícios. Para cada lista, há um arquivo .Rmd com o código em R e um arquivo .pdf correspondente com tabelas, gráficos,visualizações e os demais elementos da saída. Abaixo estão os subtópicos abordados em cada lista:
+Este projeto apresenta uma coleção de listas de exercícios resolvidos sobre Aprendizado de Máquina utilizando a linguagem R e as bibliotecas do tidyverse. As soluções apresentadas foram desenvolvidas durante a disciplina de Aprendizado de Máquina na Universidade Federal do ABC (UFABC), no segundo quadrimestre de 2023. Os tópicos estão divididos em 10 listas de exercícios. Para cada lista, há um arquivo .Rmd com o código em R e um arquivo .pdf correspondente com tabelas, gráficos,visualizações e os demais elementos da saída. Abaixo estão os subtópicos abordados em cada lista:
 
 1. **Introdução ao R:**
     * Introdução aos recursos do R e das bibliotecas tidyverse e ggplot2;
