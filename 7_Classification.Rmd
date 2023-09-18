@@ -1,0 +1,420 @@
+---
+title: "Classification"
+output: 
+  pdf_document: 
+    keep_tex: true
+    latex_engine: xelatex
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = T,
+                      fig.align='center',
+                      cache=TRUE,
+                      out.width = "60%",
+                      out.heigth = "60%",
+                      warning=FALSE,
+                      message=FALSE)
+options(width =70)
+```
+
+## Exercise 01
+In this exercise, we apply logistic regression to breast cancer data. The problem entails classifying cancer as malignant or benign based on biopsy samples. Consider the code below and answer the following questions, considering malignant as the “positive” class:
+
+(a) Explain what the recall performance metric is and manually calculate this value according to the results presented in the confusion matrix.
+(b) Explain what the precision performance metric is and manually calculate this value according to the results presented in the confusion matrix.
+(c) Manually calculate the sensitivity and specificity performance metrics using the numbers from the confusion matrix.
+(d) Check your results with the recall, precision, sensitivity, and specificity functions of the Yardstick package.
+```{r Exercise 1}
+library(yardstick)
+library(mlbench)
+library(tidymodels)
+
+# Load the data
+data("BreastCancer")
+bc_df <- as_tibble(BreastCancer) %>%
+na.omit() 
+
+# Preprocessing recipe
+rec <- recipe(Class ~ ., bc_df) %>%
+step_rm(Id) %>%
+# Turn ordinal categorical features into numerical values
+step_ordinalscore(Cl.thickness,
+  Cell.size,
+  Cell.shape,
+  Marg.adhesion,
+  Epith.c.size) %>%
+# Turn nominal categorical features (except for the target) into dummy variables
+step_dummy(all_nominal(),-all_outcomes()) %>%
+# Remove Mitoses 6
+step_rm(Mitoses_X6) %>%
+# Center and scale the data
+step_center(all_predictors()) %>%
+step_scale(all_predictors())
+# Create a regularized Logistic Regression model
+lr.model <- logistic_reg(penalty = 0, mixture = NULL
+) %>%
+set_engine("glmnet")
+# Split the dataset into training and testing sets
+set.seed(123)
+split <- initial_split(bc_df, prop = 0.70)
+train <- training(split)
+test <- testing(split)
+# Prepare the recipe with training data
+rec.prep <- rec %>% prep(train)
+# Retrieve training and testing data from the recipe
+train.prep <- juice(rec.prep)
+test.prep <- bake(rec.prep, test)
+# Fit the model on preprocessed training data
+lr.fit <- lr.model %>% fit(Class ~ ., train.prep)
+# Make predictions for preprocessed testing data
+test.pred <- test.prep %>%
+bind_cols(lr.fit %>% predict(new_data = test.prep))
+# Calculate the confusion matrix
+conf_mat(test.pred,Class,.pred_class)$table
+
+# Calculate performance metrics using Yardstick
+recall(test.pred,Class,.pred_class, event_level = "second")
+precision(test.pred,Class,.pred_class, event_level = "second")
+sensitivity(test.pred,Class,.pred_class, event_level = "second")
+specificity(test.pred,Class,.pred_class, event_level = "second")
+
+```
+
+a) Recall is the ratio of true positives to the total of observations in the positive class. In other words, it identifies the proportion of true positives that were correctly identified. It should be used when identifying false negatives is more crucial than identifying false positives - in health or security-critical applications, for instance. It can be calculated as the ratio (TRUE POSITIVES) / (TRUE POSITIVES + FALSE NEGATIVES). In this case, we have 61 / (61 + 5), which is equivalent to 0.924242.
+
+b) Precision is the ratio of true positives to the total of observations classified as positive. In other words, it identifies the proportion of correctly classified positives. It is generally used in situations where identifying false positives is more crucial than identifying false negatives. It can be calculated as the ratio (TRUE POSITIVES) / (TRUE POSITIVES + FALSE POSITIVES). In this case, we have 61 / (61 + 3), which yields a value of 0.953125.
+
+c) Sensitivity: ratio of true positives to the total of observations in the positive class.
+Calculating manually, we obtain 61 / (61 + 5) = 0.924242.
+Specificity: ratio of true negatives to the total of observations in the negative class.
+Calculating manually, we obtain 136 / (136 + 3) = 0.9784173.
+
+d) In the code.
+
+## Exercise 02
+Continuing with the previous exercise, adjust the parameters for the SVM and Logistic Regression models based on the area under the ROC curve (AUC). For Logistic Regression, we will tune the mixture and penalty parameters to perform a regularized regression. For SVM, we will use an exponential kernel (or rbf) and tune the kernel parameter $\sigma$, as well as the soft margin penalty factor C.
+```{r Exercise 2 - Logistic Regression}
+
+## Logistic Regression
+
+# Create a Logistic Regression model with parameters to be tuned
+lr.model <- logistic_reg(penalty = tune(),
+mixture = tune()
+) %>% set_engine("glmnet")
+
+# Set up the grid
+grd <- grid_max_entropy(penalty(),
+mixture(),
+size = 10)
+
+# 10-fold cross validation
+folds <- vfold_cv(bc_df,v=10)
+
+# Store the AUC and accuracy score
+metrs <- metric_set(roc_auc, accuracy)
+
+# Tune the parameters
+tune.res <- tune_grid( lr.model, 
+rec, 
+resamples = folds,
+grid = grd, 
+metrics = metrs 
+)
+
+# Collect metrics
+tune.res %>% unnest(.metrics)
+tune.res %>% collect_metrics()
+
+# Retrieve the mean value for each metric
+tune.res %>%
+unnest(.metrics) %>%
+group_by(penalty,mixture,.metric) %>%
+summarise( mean_estimate = mean(.estimate))
+
+# Select the top 3 models based on the AUC
+best_log_models = show_best(tune.res, metric = "roc_auc", n = 3)
+print(best_log_models)
+
+```
+
+```{r Exercise 2 - SVM}
+
+## SVM
+library(kernlab)
+
+# Create a SVM model with parameters to be tuned
+svm.model <- svm_rbf(mode = "classification", 
+                     cost = tune(),
+                     rbf_sigma = tune()) %>% 
+                     set_engine("kernlab")
+
+
+# Set up the grid
+grd <- grid_max_entropy(cost(),
+  rbf_sigma(),
+  size = 10)
+
+# 10-fold cross validation
+folds <- vfold_cv(bc_df,v=10)
+
+# Store the AUC and accuracy score
+metrs <- metric_set(roc_auc,accuracy)
+
+# Tune the parameters
+tune.res <- tune_grid(
+svm.model, 
+rec, 
+resamples = folds,
+grid = grd, 
+metrics = metrs 
+)
+
+# Collect metrics
+tune.res %>% unnest(.metrics)
+tune.res %>% collect_metrics()
+
+# Retrieve the mean value for each metric
+tune.res %>%
+unnest(.metrics) %>%
+group_by(rbf_sigma, cost, .metric) %>%
+summarise( mean_estimate = mean(.estimate))
+
+# Select the top 3 models based on the AUC
+best_svm_models <- show_best(tune.res, metric = "roc_auc", n = 3)
+print(best_svm_models)
+```
+## Exercise 03
+Now that we have already chosen the optimal parameters for the Logistic Regression and SVM with rbf kernel models, we will plot the ROC curves obtained through cross-validation for both models - using the optimal parameters obtained from the previous exercise. In addition to including the best parameters for Logistic Regression, create a plot for the optimized SVM model.
+```{r Exercise 3 - Logistic Regression}
+
+## Logistic Regression
+
+# Retrieve the optimal parameters found in the previous exercise
+pen <- best_log_models %>% 
+  arrange(desc(mean)) %>% 
+  slice(1:1) %>% pull(penalty)
+
+mix <- best_log_models %>% 
+  arrange(desc(mean)) %>% 
+  slice(1:1) %>% pull(mixture)
+
+# Perform Logistic Regression
+lr.model <- logistic_reg( penalty = pen,
+mixture = mix	) %>%
+set_engine("glmnet")
+
+# 5-fold cross validation
+folds <- vfold_cv(v = 5,bc_df)
+
+fit.res <- fit_resamples( lr.model, 
+rec, 
+resamples = folds,
+# Save the predicitons
+control = control_resamples(save_pred = TRUE) )
+
+
+# Plot the ROC curve for each fold
+predictions <- fit.res %>%
+unnest(.predictions)
+
+predictions %>%
+group_by(id) %>%
+roc_curve(Class,.pred_benign) %>%
+ggplot(aes(x = 1-specificity, y = sensitivity, color = id) ) +
+geom_path(size = 1.2, alpha = 0.8) +
+geom_abline(lty = 2, color = "gray", size = 1.5) +
+coord_equal()
+
+# Plot the final ROC curve
+predictions %>%
+mutate( model = "Logistic Regression") %>%
+group_by(model) %>%
+roc_curve(Class,.pred_benign) %>%
+ggplot(aes(x = 1-specificity, y = sensitivity, color = model) ) +
+geom_path(size = 1.2, alpha = 0.8) +
+geom_abline(lty = 2, color = "gray", size = 1.5) +
+coord_equal()
+```
+
+```{r Exercise 3 - SVM}
+
+## SVM
+
+# Retrieve the optimal parameters found in the previous exercise
+cos <- best_svm_models %>% 
+  arrange(desc(mean)) %>% 
+  slice(1:1) %>% pull(cost)
+print(cos)
+
+sig <- best_svm_models %>% 
+  arrange(desc(mean)) %>% 
+  slice(1:1) %>% pull(rbf_sigma)
+print(sig)
+	
+# Run SVM
+svm.model <- svm_rbf(
+  mode = "classification", 
+  rbf_sigma = sig, 
+  cost = cos) %>% set_engine("kernlab")
+
+# 5-fold cross validation
+folds <- vfold_cv(v = 5,bc_df)
+fit.res <- fit_resamples( svm.model,
+rec, 
+resamples = folds, 
+# Save the predictions
+control = control_resamples(save_pred = TRUE) )
+
+predictions <- fit.res %>%
+unnest(.predictions)
+
+# Plot the ROC curve for each fold
+predictions %>%
+group_by(id) %>%
+roc_curve(Class,.pred_benign) %>%
+ggplot(aes(x = 1-specificity, y = sensitivity, color = id) ) +
+geom_path(size = 1.2, alpha = 0.8) +
+geom_abline(lty = 2, color = "gray", size = 1.5) +
+coord_equal()
+
+# Plot the final ROC curve
+predictions %>%
+mutate(model = "SVM") %>%
+group_by(model) %>%
+roc_curve(Class,.pred_benign) %>%
+ggplot(aes(x = 1-specificity, y = sensitivity, color = model) ) +
+geom_path(size = 1.2, alpha = 0.8) +
+geom_abline(lty = 2, color = "gray", size = 1.5) +
+coord_equal()
+```
+
+
+## Exercise 04
+The Perceptron algorithm is one of the simplest classification algorithms. In this exercise, we will implement and test it on the iris database. We can perform binary classification by distinguishing between 'setosa' and 'other' classes, which results in a linearly separable problem.
+
+Load the iris database and assign the label 'other' for observations where the Species is not 'setosa'. Implement Perceptron using the perceptron.fit and perceptron.predict functions.
+
+The perceptron.fit function fits the model with the training data, and the perceptron.predict function should return the output vector for x using the following criterion: if $wtx + b > 0$, the output is 'other', and if $wtx + b < 0$, the output is 'setosa', where w and b are tuned by the perceptron.fit function.
+
+Once you have completed the code implementation, calculate the model accuracy using a k-fold cross-validation process. Please note that the 'fit_resamples' function cannot be used in this case, as it is specific to models from the tidymodels ecosystem.
+```{r Exercise 4}
+
+# Load and transform the data
+data("iris")
+df <- as_tibble(iris) %>%
+    mutate(Species = as.character(Species)) %>%
+    mutate(Class = if_else(Species == "setosa", Species, "other")) %>%
+    select(-Species) %>%
+    mutate(Class = factor(Class, levels = c("setosa", "other")))
+
+# Function to fit the Perceptron
+perceptron.fit <- function(
+    form, 
+    df, 
+    eta = 0.01) 
+{
+    # Retrieve the training dataset built from the formula:
+    train_df <- model.frame(form, df)
+    # Retrieve the column with y values and input the numbers -1 and +1
+    classes <- levels(train_df[, 1])
+    y <- train_df[, 1] %>% as.integer()
+    y <- (y - 1) * 2 - 1
+    # Retrieve the column with X values
+    X <- as.matrix(train_df[, -1])
+    # Normal vector of the hyperplane and the intercept
+    w <- vector("numeric", length = ncol(X))
+    b <- 0
+    # Implement the Perceptron:
+    e <- 1
+    while (e != 0) {
+        e <- 0
+        # Shuffling the index set
+        index <- sample(1:nrow(X))
+        for (i in 1:nrow(X)) {
+            j <- index[i]
+            x <- as.numeric(X[j, ])
+            y_pred <- sign(sum(w * x) + b)
+            if (y_pred * y[j] <= 0) {
+              w <- w + eta * y[j] * x
+              b <- b + eta * y[j]
+              e <- e + 1
+            }
+        }
+    }
+    return(list(
+        "formula" = form, 
+        "classes" = classes, 
+        "normal" = w, 
+        "y_intercept" = b
+    ))
+}
+
+# Funtion to make predictions
+perceptron.predict <- function(
+    percep.fit,
+    new_data) 
+{
+    form <- percep.fit$formula
+    classes <- percep.fit$classes
+    w <- percep.fit$normal
+    b <- percep.fit$y_intercept
+    
+    class_column <- as.character(form[2])
+    if (class_column %in% names(new_data)) {
+        test_df <- model.frame(form[-2], new_data %>% select(-class_column))
+    } else {
+        test_df <- model.frame(form[-2], new_data)
+    }
+
+    X <- as.matrix(test_df)
+    pred <- factor(vector("character", length = nrow(X)), levels = classes)
+    for (i in 1:nrow(X))
+    {
+        x <- as.numeric(X[i, ])
+        y_pred <- sign(sum(w * x) + b)
+        if (y_pred == -1) {
+          pred[i] <- classes[1]
+        } else {
+          pred[i] <- classes[2]
+        }
+    }
+    return(tibble(.pred = pred))
+}
+
+# Cross validation
+splits <- vfold_cv(df, k = 10, repeats = 3)
+acc_results <- vector("numeric", length = nrow(splits))
+for (i in 1:nrow(splits))
+{
+    s <- splits$splits[[i]]
+    train <- analysis(s)
+    test <- assessment(s)
+    percep.fit <- perceptron.fit(Class ~ ., train)
+    test_pred <- perceptron.predict(percep.fit, test) %>%
+        bind_cols(test) %>%
+        accuracy(Class, .pred)
+    acc_results[i] <- test_pred$.estimate
+}
+cat("Average accuracy score = ", mean(acc_results), "\n")
+
+## Plot
+
+library(modelr)
+# Create a grid with data points 
+plot_grid <- expand_grid( Sepal.Length = seq_range(df$Sepal.Length,50),
+Petal.Length = seq_range(df$Petal.Length,50))
+df <- df %>% select( Sepal.Length, Petal.Length, Class )
+
+# Add predictions for the classes
+percep.fit <- perceptron.fit(Class ~ ., df)
+plot_grid_pred <- plot_grid %>%
+mutate( pred = perceptron.predict(percep.fit,plot_grid)$.pred)
+
+# create the plot
+ggplot(plot_grid_pred, aes(Sepal.Length,Petal.Length))+
+geom_contour(aes(z= as.integer(pred)),
+alpha = 0.5, show.legend = F,breaks = c(1L,2L),
+size=1.2, color ="red") +
+geom_point(data = df, aes(z=NULL,colour = Class),size=2) +
+labs(title = "Decision Boundary for Perceptron")
+```

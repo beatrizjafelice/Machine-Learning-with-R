@@ -1,0 +1,265 @@
+---
+title: "Kernels and Discriminant Analysis"
+output: 
+  pdf_document: 
+    keep_tex: true
+    latex_engine: xelatex
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = T,
+                      fig.align='center',
+                      cache=TRUE,
+                      out.width = "60%",
+                      out.heigth = "60%",
+                      warning=FALSE,
+                      message=FALSE)
+options(width =70)
+```
+
+## Exercise 01
+In this exercise, we will use randomly generated data. Solve the following questions:
+
+(a) Implement a function that returns the kernel matrix K using a polynomial kernel of degree 3 with a constant c = 1. In other words, calculate the $K \in \mathbb{R}^{m \times m}$ matrix such that
+\begin{center}$K_{ij} = (x_{i1} \cdot x_{j1} + 1)^3$\end{center}
+
+(b) Calculate the $\alpha$ coefficients using the Ridge Regression method with Kernel and a penalty parameter of $\lambda = 0.001$. Remember that these coefficients are given by
+\begin{center}$\alpha = (K + \lambda I)^{-1} y$.\end{center}
+For simplification purposes, let the y-intercept b = 0.
+
+(c) Create a two-dimensional graph of the resulting function using $x = x1$ and $y =$ "predicted value". Remember that Kernel Ridge regression makes predictions according to the following expression:
+\begin{center}$f(x) = \sum_{i=1}^{m}\alpha_i k(x_i, x) + b$,\end{center}
+This means that, for training data, the expression for f is given by $f = \alpha K + b$, where K is the kernel matrix calculated in (a), and f is the vector containing predicted values for the training set.
+```{r Exercise 1}
+library(tidyverse)
+library(knitr)
+
+# Load the dataset
+df <- tibble( x1 = runif(100,-4,4),
+y = x1**3 - 2*x1**2 + 5*x1 + 13 + rnorm(100,0,5.0))
+
+# Function to generate the Kernel matrix
+kernel <- function(df) {
+  m <- nrow(df)
+  K <- matrix(0, m, m)
+  
+  for (i in 1:m) {
+    for (j in 1:m) {
+      x1_i <- df$x1[i]
+      x1_j <- df$x1[j]
+      K[i, j] <- (x1_i * x1_j + 1)**3
+    }
+  }
+  
+  return(K)
+}
+
+# a) Calculate the kernel matrix for the given dataset
+K <- kernel(df)
+print(kable(head(K)))
+
+# Calculate the identity matrix multiplied by the penalty
+n <- nrow(df)
+I <- diag(n) * 0.001
+
+# b) Calculate the alpha coefficients
+alpha <- solve(K + I) %*% as.matrix(df$y, ncol = 1)
+print(kable(head(alpha)))
+
+# Multiply the kernel matrix by the alpha coefficients,
+# creating a nx1 with predicted values for Y.
+# We store these values in a column named y_k:
+Y <- K %*% alpha
+Y_K <- as.data.frame(Y)
+df$y_k <- Y_K$V1
+print(kable(head(df)))
+
+# c) Create a 2D plot for the output function
+plot <- ggplot(df, aes(x = x1, y = y_k)) +
+  geom_point(aes(x = x1, y = y)) +
+  geom_line(color = "red", size = 1) +
+  xlab("x") +
+  ylab("f(x)") +
+  ggtitle("Polynomial Kernel")
+print(plot)
+```
+
+## Exercise 02
+Repeat the previous exercise for the $sinc(x)$ function, which is defined as follows:
+
+\begin{center}
+$$sinc(x) =
+\left\{
+	\begin{array}{ll}
+		sin(x)/x  & \mbox{if } x \neq 0, \\
+		1 & \mbox{otherwise. }
+	\end{array}
+\right.$$
+\end{center}
+
+
+The $sinc(x)$ function is often used to test regression algorithms. Assume that the $\epsilon$ error follows a normal distribution with mean = 0 and variance = 0.05. For this exercise, use the Gaussian kernel with $\sigma = 1$. The kernel is defined as follows:
+
+\begin{center}$K_{ij} = e^{-(x_{i1} - x_{j1})^2}$.\end{center}
+
+Test different values for the $\lambda$ penalty.
+```{r Exercise 2}
+# Load the data
+df <- tibble( x1 = runif(100,-10,10),
+y = if_else(x1==0,1,sin(x1)/x1) + rnorm(100,0,0.05))
+
+# Function to generate the Kernel matrix
+kernel <- function(df) {
+  m <- nrow(df)
+  K <- matrix(0, m, m)
+  
+  for (i in 1:m) {
+    for (j in 1:m) {
+      x1_i <- df$x1[i]
+      x1_j <- df$x1[j]
+      K[i, j] <- exp(-(x1_i - x1_j)**2)
+    }
+  }
+  
+  return(K)
+}
+
+# a) Calculate the kernel matrix for the given dataset
+K <- kernel(df)
+
+# Calculate the identity matrix multiplied by the penalty
+# In this case, we compare 3 different values for lambda
+n <- nrow(df)
+I1 <- diag(n) * 0.1
+I2 <- diag(n) * 0.01
+I3 <- diag(n) * 0.001
+
+# b) Calculate the alpha coefficients
+alpha1 <- solve(K + I1) %*% as.matrix(df$y, ncol = 1)
+alpha2 <- solve(K + I2) %*% as.matrix(df$y, ncol = 1)
+alpha3 <- solve(K + I3) %*% as.matrix(df$y, ncol = 1)
+
+# Multiply the kernel matrix by the alpha coefficients,
+# creating a nx1 with predicted values for Y.
+# We store these values in new columns named y_k_01,
+# y_k_001 e y_k_0001, for each value of lambda:
+Y1 <- K %*% alpha1
+Y2 <- K %*% alpha2
+Y3 <- K %*% alpha3
+Y_K_01 <- as.data.frame(Y1)
+Y_K_001 <- as.data.frame(Y2)
+Y_K_0001 <- as.data.frame(Y3)
+df$y_k_01 <- Y_K_01$V1
+df$y_k_001 <- Y_K_001$V1
+df$y_k_0001 <- Y_K_0001$V1
+print(kable(head(df)))
+
+# c) Create a 2D plot for the output function 
+
+# Plot 1:  lambda = 0.1
+plot <- ggplot(df, aes(x = x1, y = y_k_01)) +
+  geom_point(aes(x = x1, y = y)) +
+  geom_line(color = "red", size = 1.2) +
+  xlab("x") +
+  ylab("f(x)") + 
+  ggtitle("Gaussian Kernel: lambda = 0.1")
+print(plot)
+
+# Plot 2: lambda = 0.01
+plot <- ggplot(df, aes(x = x1, y = y_k_001)) +
+  geom_point(aes(x = x1, y = y)) +
+  geom_line(color = "red", size = 1.2) +
+  xlab("x") +
+  ylab("f(x)") + 
+  ggtitle("Gaussian Kernel: lambda = 0.01")
+print(plot)
+
+# Plot 3: lambda = 0.001
+plot <- ggplot(df, aes(x = x1, y = y_k_0001)) +
+  geom_point(aes(x = x1, y = y)) +
+  geom_line(color = "red", size = 1.2) +
+  xlab("x") +
+  ylab("f(x)") + 
+  ggtitle("Gaussian Kernel: lambda = 0.001")
+print(plot)
+```
+The solution appears to become more flexible as the value for lambda decreases. With lambda = 0.001, the graph displays more cusps and corners compared that of the function with lambda = 0.1.
+
+## Exercise 03
+\textbf{Answer the following questions:}
+
+\textbf{(a)  If the Bayes decision boundary is linear, do we expect LDA or QDA to perform better on the training set? On the test set? Explain.}
+
+\textbf{(b)  If the Bayes decision boundary is non-linear, do we expect LDA or QDA to perform better on the training set? On the test set? Explain.}
+
+a) If the decision boundary is linear, QDA is expected to perform better on the training set, while LDA will perform better on the test set. This is because QDA would fit the data better than LDA because of its increased flexibility. However, for the test set, LDA is expected to outperform QDA as the flexibility of QDA can lead to an overfit model.
+
+b) If the decision boundary is nonlinear, QDA is expected to perform better on both the test and training sets. As mentioned earlier, QDA results in more flexible models that can better capture nonlinear relationships in both datasets.
+
+
+## Exercise 04
+In this exercise, we will use the "Ionosphere" data set on radar data. This data is often used to test machine learning algorithms and consists of a binary classification problem. See ?IonoSphere for more details. This dataset is available in the mlbench library. We will not use the columns V1 and V2, so remove these columns using select$(-V1,-V2)$. The goal of this exercise is to compare the LDA, QDA, and Naive Bayes methods. All of these methods can be found in the discrim library of tidymodels. You will also need to install the klaR library, which defines the engine for these methods. For all methods, generate a k-fold cross-validation set with k = 10 or k = 5 (depending on the time required to run on your machine).
+
+Which method yields the best results?
+```{r Exercise 4}
+library(mlbench)
+library(tidyverse)
+library(discrim)
+library(klaR)
+library(dplyr)
+library(tidymodels)
+library(recipes)
+
+# Prepare the data
+data(Ionosphere)
+df <- as.data.frame(Ionosphere) 
+df <- subset(df, select = -c(V1, V2))
+
+rs <- vfold_cv(df, v = 10)
+rcp <- recipe(Class ~ ., data = df) 
+
+# LDA
+lda <- discrim_regularized(frac_common_cov = 1) %>%
+  set_engine("klaR")
+
+fit_lda <- 
+  workflow() %>% 
+  add_model(lda) %>% 
+  add_recipe(rcp) %>% 
+  fit_resamples(
+    resamples = rs,
+    control = control_resamples(save_pred = TRUE)
+  ) 
+
+collect_metrics(fit_lda)
+
+# QDA
+qda <- discrim_regularized(frac_common_cov = 0) %>%
+  set_engine("klaR")
+
+fit_qda <- 
+  workflow() %>% 
+  add_model(qda) %>% 
+  add_recipe(rcp) %>% 
+  fit_resamples(
+    resamples = rs,
+    control = control_resamples(save_pred = TRUE)
+  ) 
+
+collect_metrics(fit_qda)
+
+# Naive Bayes
+naive <- naive_Bayes() %>% set_engine("klaR")
+
+fit_naive <- 
+  workflow() %>% 
+  add_model(naive) %>% 
+  add_recipe(rcp) %>% 
+  fit_resamples(
+    resamples = rs,
+    control = control_resamples(save_pred = TRUE)
+  ) 
+
+collect_metrics(fit_naive)
+```
+Based on these results, QDA exhibits higher accuracy and the highest ROC AUC value, indicating that it is better at distinguishing between the classes. In contrast, LDA yielded the worst results in terms of the same metrics, whereas Naive Bayes demonstrated intermediate performance.

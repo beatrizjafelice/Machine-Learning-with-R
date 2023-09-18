@@ -1,0 +1,219 @@
+---
+title: "Feature Selection"
+output: 
+  pdf_document: 
+    keep_tex: true
+    latex_engine: xelatex
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = T,
+                      fig.align='center',
+                      cache=TRUE,
+                      out.width = "60%",
+                      out.heigth = "60%",
+                      warning=FALSE,
+                      message=FALSE)
+options(width =70)
+```
+
+## Exercise 01
+In this exercise, we will work with the mtcars dataset, which is readily available in R.
+
+\textbf{Part 1 - Linear Regression with 'hp' as a Feature:}
+
+\begin{enumerate}
+  \item Perform linear regression with 'hp' as the independent variable and 'mpg' as the target variable using the 'lm' command in base R.
+  \item Use the 'summary' function to examine the regression results. Comment on the performance of the regression and the importance of the 'hp' feature.
+  \item Create a scatterplot and overlay the regression line using the \texttt{'geom\_abline'} command from the ggplot2 library. Provide insights into the visual representation of the regression.
+\end{enumerate}
+
+\textbf{Part 2 - Linear Regression with All Features:}
+
+\begin{enumerate}
+  \item Use all features from the mtcars dataset to predict the response variable 'mpg.'
+  \item Once again, employ the 'summary' command to analyze the results. Assess whether the 'hp' variable maintains its importance compared to the previous step.
+  \item Discuss the results in terms of collinearity. You can calculate the Variance Inflation Factor (VIF) using the 'vif' command from the 'car' package.
+\end{enumerate}
+``` {r Exercise 1}
+
+library(tidymodels)
+df <- as_tibble(mtcars)
+
+# Perform Linear Regression
+lin.model <- lm(mpg ~ hp, data = df)
+summary(lin.model)
+
+# Extract the coefficients (intercept = beta and slope = alfa)
+beta <- coef(lin.model)[1]
+alfa <- coef(lin.model)[2]
+
+# Shows the scatterplot
+ggplot(df, aes(x = hp, y = mpg)) +
+  geom_point() +                         
+  geom_abline(intercept = beta, slope = alfa, color = "red") +  
+  labs(x = "hp", y = "mpg") +  
+  ggtitle("Scatterplot: hp x mpg") 
+
+# Notice the negative correlation between these variables
+# (the greater the value for hp, the lower the value for mpg)
+
+library(car)
+library(knitr)
+lin.model <- lm(mpg ~ ., data = df)
+
+# Summarize the results
+summary(lin.model)
+
+# Calculate the Variance Inflation Factor (VIF)
+vif_vals <- vif(lin.model)
+tibble( var_name = names(vif_vals)
+, vif = vif_vals
+) %>%
+kable()
+```
+The p-value for 'hp' is 33.5%. Given that the standard threshold to reject the null hypothesis is 5%, it is evident that 'hp' is not significantly correlated with 'mpg.' Among the variables presented, 'wt' returns the lowest p-value, indicating a higher probability of being correlated with the target variable.
+
+Regarding the VIF of the 'hp' variable, it exhibits a relatively high value. Typically, VIF values above 5 or 10 suggest high collinearity. This implies that 'hp' is likely correlated with another variable in the dataset, which lessens its importance in predicting 'mpg', as shown in the previous result.
+
+## Exercise 02
+In this exercise, we will use a 2018 FIFA database of soccer players. Conduct a linear regression analysis with this dataset to identify the main predictor variables based on their p-values. Additionally, calculate the Variance Inflation Factor (VIF) using the 'vif' command and discuss the results in terms of collinearity and its implications for the analysis based on p-values.
+``` {r Exercise 2}
+
+library(car)
+file_url = "https://drive.google.com/uc?export=download&id=1jiWcGsl_tbqK5F0ryUTq48kcDTKWTTuk"
+df_orign <- read.csv(file_url) %>% as_tibble
+
+# Clean the data
+library(stringr) 
+df <- df_orign %>%
+select(Age, Overall, Potential, Wage, Special,
+Acceleration, Aggression, Agility, Balance, Ball.control,
+Composure, Crossing, Curve, Dribbling, Finishing, Positioning,
+Stamina, Interceptions, Strength, Vision, Volleys, Jumping, Penalties,
+Shot.power, Sprint.speed, Heading.accuracy, Long.passing, Short.passing
+) %>%
+mutate( Wage = as.integer(str_extract(Wage,"[0-9]+")) ) %>%
+mutate_if(is.character,as.integer) %>%
+na.omit()
+
+
+# Perform Linear Regression taking 'Wage' as the target variable
+lin.model <- lm(Wage ~ ., data = df)
+summary(lin.model) %>%
+tidy() %>%
+filter( p.value < 0.001, term != "(Intercept)" ) %>%
+kable()
+
+
+# Calculate the Variance Inflation Factor (VIF)
+vif_vals <- vif(lin.model)
+tibble( var_name = names(vif_vals)
+, vif = vif_vals
+) %>%
+arrange(desc(vif)) %>%
+kable()
+```
+The summary indicates that the primary features have the lowest p-values: Age, Overall, Potential, Composure, Volleys, Jumping, and Penalties. All of these variables have p-values below 1%, indicating a strong correlation with the target variable (Wage).
+
+It's important to note that some variables have a VIF (Variance Inflation Factor) exceeding 10, such as Overall, Ball.control, Special, Dribbling, and Short.passing. This suggests a strong correlation with other predictors in the dataset.
+
+Other predictor variables have a VIF between 5 and 10, indicating a significant likelihood of collinearity: Positioning, Shot.power, Potential, Interceptions, Sprint.speed, Crossing, Acceleration, Curve, Long.passing, Volleys, and Finishing.
+
+In summary, considering both results, Age, Composure, Jumping, and Penalties exhibit low values for both the p-value and the VIF. Therefore, these features are likely to have a strong correlation with the target variable and a low chance of collinearity with other features.
+
+## Exercise 03
+``` {r Exercise 3}
+library(leaps)
+
+# Run the BSS algorithm
+regfit.full = regsubsets(Wage ~ ., df, method = "exhaustive", nvmax=nrow(df)-1)
+summary.bss = tidy(regfit.full)
+summary.bss$num.features <- row.names(summary.bss)
+summary.bss %>% View
+which.max(summary.bss$adj.r.squared)
+
+# Shows the plot for adjusted R² vs. number of features
+plot <- ggplot(summary.bss, aes(x = reorder(num.features, as.numeric(num.features)), y = adj.r.squared)) +
+  geom_line() +
+  geom_point() +
+  xlab("Number of Features") +
+  ylab("R²") +
+  ggtitle("Adjusted R² vs. number of features (BSS)")
+
+print(plot)
+```
+The results above suggest that the model with the highest adjusted R² among the best models with k features is the model with 22 features.
+
+
+## Exercise 04
+Instead of relying on p-values to identify the most relevant predictors, we will use the Best Subset Selection (BSS) method provided by the 'leaps' package. To view the variables chosen at each level (each one represents a number of features), simply call the 'tidy' function. It returns a tibble that shows the variables included at each level, with TRUE indicating inclusion. To select the best model among the levels, choose the one with the highest adjusted R² value.
+
+For a visual representation of the results, create a plot of the adjusted R² against the number of features using the table generated by the 'tidy' command. How many predictor variables would you choose?
+``` {r Exercise 4}
+# Run the FSS algorithm
+regfit.forward <- regsubsets(Wage ~., df, method = "forward", nvmax=ncol(df)-1)
+summary.fss <- tidy(regfit.forward)
+summary.fss$num.features <- row.names(summary.fss)
+summary.fss %>% View
+which.max(summary.fss$adj.r.squared)
+
+# Shows the plot for adjusted R² vs. number of features
+plot <- ggplot(summary.fss, aes(x = reorder(num.features, as.numeric(num.features)), y = adj.r.squared)) +
+  geom_line(aes(x = reorder(num.features, as.numeric(num.features)), y = adj.r.squared )) +
+  geom_point() +
+  xlab("Number of Features") +
+  ylab("R²") +
+  ggtitle("Adjusted R² vs. number of features (FSS)")
+
+print(plot)
+```
+
+Similar to the previous exercise, the model with the highest adjusted R² among the best models with k features is the model with 22 features.
+
+The primary advantage of FSS (Forward Stepwise Selection) over BSS (Backward Stepwise Selection) is its greater computational efficiency. To illustrate this, let's assume d = 20. Using BSS, there would be 1,048,576 different models to be tested. In contrast, FSS reduces this number to 211. However, FSS tests models incrementally, limiting its ability to compare every possible model with k features. Therefore, FSS may not yield the optimal combination of features for each value of k.
+
+## Exercise 5
+In the previous exercise, we used the adjusted R² to select the best set of predictor variables for our model. For more accurate error measurement, it is best practice to employ cross-validation when determining the number of features. You can achieve this by using the 'vfold_cv' command to generate data partitions into folds. Choose 'v = 10' to create a 10-fold cross-validation.
+``` {r Exercise 5}
+library(rsample)
+library(tidyr)
+library(leaps)
+
+# Generate 10-fold cross-validation sets
+cv.split = vfold_cv(df,v=10)
+results <- matrix(0,nrow=nrow(cv.split),ncol=ncol(df)-1)
+
+# Run FSS on each fold
+for( i in 1:nrow(cv.split) ) {
+  s = cv.split$splits[[i]]
+  train = analysis(s)
+  test = assessment(s)
+  rss.fit= regsubsets(
+      Wage ~., train,
+      method = "forward",
+      nvmax=ncol(df)-1)
+  
+  # Fit and evaluate the error
+  rss.td = tidy(rss.fit)
+
+  for( j in 1:nrow(rss.td) ) {
+    coefs <- coef(rss.fit,id = j)
+    v.names <- names(coefs)
+    test.mat<- model.matrix(Wage ~ ., data = test)
+    pred <- test.mat[,v.names] %*% coefs
+    MSE <- mean(( test$Wage - pred )**2)
+    results[i,j] = MSE
+  }
+}
+
+
+plot.df <- tibble(num_features = 1:ncol(results),
+MSE = colMeans(results))
+ggplot(plot.df, aes(x = num_features, y = MSE)) +
+geom_line() +
+geom_point(aes(x = 15, y = MSE[15]), color = "blue", size = 2)
+
+
+```
+According to the graph, d = 15 appears to be a more appropriate number of features. Below this level, there is little reduction in the MSE (Mean Squared Error).
