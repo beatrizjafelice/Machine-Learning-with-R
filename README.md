@@ -43,7 +43,13 @@ The topics are divided into 10 sets of exercices, each containing an .Rmd file w
     * Perform cluster analysis with k-means clustering, hierarchical clustering, and DBSCAN;
     * Select the optimal number of clusters using the elbow method and the Gap Statistic;
     * Apply PCA for dimensionality reduction.
+<br>
 
+**Professor:** Dr. Saul de Castro Leite
+
+**Solutions by:**
+* Beatriz Fanuele Jafelice - [beatrizjafelice](https://github.com/beatrizjafelice)
+* Lucas Colonna Romano - [lucascolonna](https://github.com/lucascolonna)
 
 <br>
 <br>
@@ -90,8 +96,13 @@ Este projeto apresenta uma coleção de listas de exercícios resolvidos sobre A
     * Agrupamento com k-means, agrupamento hierárquico e DBSCAN;
     * Seleção do melhor número de grupos utilizando o "método do cotovelo" e a Estatística de Gap;
     * Aplicação de Principal Component Analysis (PCA) para redução de dimensionalidade.
+<br>
 
+**Docente:** Prof. Dr. Saul de Castro Leite
 
+**Resoluções desenvolvidas por:**
+* Beatriz Fanuele Jafelice - [beatrizjafelice](https://github.com/beatrizjafelice)
+* Lucas Colonna Romano - [lucascolonna](https://github.com/lucascolonna)
 <br> <br>
 
 ## Resources / Materiais:
